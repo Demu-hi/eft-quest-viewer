@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EFT Live Task Viewer</title>
+  <style>
+    :root {
+      --bg-main: #0c0d10;
+      --bg-panel: #16181d;
+      --bg-card: #1f232c;
+      --accent: #c49a45;
+      --border: #2b303c;
+      --text: #e6e8eb;
+      --text-muted: #8c93a0;
+      --fir: #52c41a;
+      --key: #faad14;
+      --danger: #ff4d4f;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Meiryo", sans-serif; }
+    body { background-color: var(--bg-main); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* 上部バー */
+    .top-controls {
+      background: #08090b;
+      padding: 6px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .search-input {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      min-width: 140px;
+      outline: none;
+    }
+    .filter-select {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .btn-action {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      background: var(--bg-card);
+      border-radius: 4px;
+      white-space: nowrap;
+      margin-left: auto;
+      color: var(--fir);
+      border: 1px solid var(--border);
+    }
+
+    /* トレーダー選択バー */
+    .trader-bar {
+      display: flex;
+      overflow-x: auto;
+      background: #111317;
+      border-bottom: 2px solid var(--border);
+      padding: 6px 8px;
+      gap: 6px;
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
+    }
+    .trader-btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .trader-btn.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+      box-shadow: 0 0 8px rgba(196, 154, 69, 0.4);
+    }
+
+    /* タスク選択バー */
+    .task-bar {
+      display: flex;
+      overflow-x: auto;
+      background: var(--bg-panel);
+      padding: 6px 8px;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
+    }
+    .task-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .task-btn.active {
+      border-color: var(--accent);
+      background: #2b3340;
+      color: #fff;
+    }
+    .task-btn.completed {
+      opacity: 0.35;
+      text-decoration: line-through;
+    }
+
+    /* 3分割メインパネル */
+    .dashboard {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1.2fr;
+      gap: 8px;
+      padding: 8px;
+      overflow: hidden;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
+        overflow-y: auto;
+      }
+    }
+
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .card-header {
+      background: #111317;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-body {
+      padding: 10px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* カラム1: MAP */
+    .map-box {
+      position: relative;
+      height: 100%;
+      min-height: 200px;
+      background: #050608;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .map-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      cursor: zoom-in;
+    }
+    .map-actions {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: flex;
+      gap: 6px;
+    }
+    .map-btn {
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    /* カラム2: 持ち物・要件 */
+    .item-card {
+      background: var(--bg-card);
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+      border-left: 3px solid var(--accent);
+    }
+    .item-card.fir { border-left-color: var(--fir); }
+    .item-card.key { border-left-color: var(--key); }
+
+    /* カラム3: 手順・要点 */
+    .flow-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .flow-step {
+      background: var(--bg-card);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      display: flex;
+      gap: 10px;
+    }
+    .flow-index {
+      color: var(--accent);
+      font-weight: bold;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+    .ext-links { display: flex; gap: 8px; margin-top: 12px; }
+    .ext-btn {
+      flex: 1;
+      background: #252b36;
+      border: 1px solid var(--border);
+      color: var(--text);
+      text-align: center;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      text-decoration: none;
+    }
+
+    /* 完了ボタン */
+    .btn-status {
+      background: #252b36;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .btn-status.done {
+      background: var(--fir);
+      color: #000;
+      font-weight: bold;
+      border-color: var(--fir);
+    }
+
+    /* ローディング / エラー表示 */
+    .modal-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(12, 13, 16, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      gap: 14px;
+      padding: 20px;
+      text-align: center;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- ローディング / エラー表示 -->
+  <div class="modal-overlay" id="loadingModal">
+    <div class="spinner" id="loadingSpinner"></div>
+    <div id="loadingMsg" style="font-size: 0.95rem; color: var(--accent);">tarkov.dev APIへ接続中...</div>
+    <button id="retryBtn" class="btn-action" style="display:none; padding:8px 16px; margin-top:8px;" onclick="fetchAPI(true)">再試行する</button>
+  </div>
+
+  <!-- 上部バー -->
+  <div class="top-controls">
+    <input type="text" id="searchInput" class="search-input" placeholder="🔍 タスク検索..." oninput="handleSearch(this.value)">
+    <select id="mapFilter" class="filter-select" onchange="handleMapFilter(this.value)">
+      <option value="">全マップ</option>
+    </select>
+    <button class="btn-action" onclick="fetchAPI(true)">🔄 最新取得</button>
+    <div class="status-badge" id="dataStatus">通信待機</div>
+  </div>
+
+  <!-- 1. トレーダー選択バー -->
+  <div class="trader-bar" id="traderBar"></div>
+
+  <!-- 2. タスク選択バー -->
+  <div class="task-bar" id="taskBar"></div>
+
+  <!-- 3. メイン3分割ダッシュボード -->
+  <div class="dashboard">
+    <!-- Panel 1: MAP -->
+    <div class="card">
+      <div class="card-header">
+        <span>📍 MAP / 現場</span>
+        <span id="mapLabel" style="color:var(--text-muted); font-weight:normal;">-</span>
+      </div>
+      <div class="card-body map-box" style="padding:0;">
+        <img id="mapImg" src="" alt="MAP" onclick="window.open(this.src, '_blank')">
+        <div class="map-actions">
+          <a id="interactiveMapLink" href="#" target="_blank" class="map-btn">🌐 3Dマップ</a>
+          <span class="map-btn" onclick="window.open(document.getElementById('mapImg').src, '_blank')">拡大</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: 必要な鍵・アイテム・要約 -->
+    <div class="card">
+      <div class="card-header">
+        <span>🎒 鍵・アイテム・指定要件</span>
+        <button class="btn-status" id="completeToggleBtn" onclick="toggleCurrentTaskComplete()">未完了</button>
+      </div>
+      <div class="card-body" id="requirementsBox"></div>
+    </div>
+
+    <!-- Panel 3: 攻略要約フロー -->
+    <div class="card">
+      <div class="card-header">
+        <span>📋 目標・手順一覧</span>
+        <span id="levelReq" style="font-size:0.75rem; color:var(--text-muted);">Lv.-</span>
+      </div>
+      <div class="card-body">
+        <ul class="flow-list" id="flowBox"></ul>
+        <div class="ext-links">
+          <a id="jpWikiLink" href="#" target="_blank" class="ext-btn">📖 日本Wikiで検索</a>
+          <a id="offWikiLink" href="#" target="_blank" class="ext-btn">🌐 Official Wiki</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 仕様変更に強いミニマルクエリ
+    const MINIMAL_QUERY = JSON.stringify({
+      query: `{
+        tasks {
+          id
+          name
+          minPlayerLevel
+          wikiLink
+          trader {
+            name
+          }
+          map {
+            name
+            normalizedName
+          }
+          objectives {
+            id
+            description
+            optional
+          }
+        }
+      }`
+    });
+
+    const mapImages = {
+      "ground-zero": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/ground-zero.jpg",
+      "customs": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/customs.jpg",
+      "factory": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/factory.jpg",
+      "woods": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/woods.jpg",
+      "interchange": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/interchange.jpg",
+      "shoreline": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/shoreline.jpg",
+      "reserve": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/reserve.jpg",
+      "lighthouse": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/lighthouse.jpg",
+      "streets-of-tarkov": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/streets.jpg"
+    };
+
+    let allTasks = [];
+    let traderGrouped = {};
+    let currentTrader = "";
+    let currentTaskId = null;
+    let selectedMap = "";
+    let searchQuery = "";
+    let completedMap = JSON.parse(localStorage.getItem('eft_completed_v3') || '{}');
+
+    async function fetchAPI(force = false) {
+      const modal = document.getElementById('loadingModal');
+      const spinner = document.getElementById('loadingSpinner');
+      const msg = document.getElementById('loadingMsg');
+      const retryBtn = document.getElementById('retryBtn');
+
+      modal.style.display = 'flex';
+      spinner.style.display = 'block';
+      retryBtn.style.display = 'none';
+      msg.textContent = "tarkov.dev APIへ接続中...";
+      msg.style.color = "var(--accent)";
+
+      // キャッシュチェック
+      const cached = localStorage.getItem('eft_tasks_v3_cache');
+      if (cached && !force) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            processTasks(parsed);
+            modal.style.display = 'none';
+            document.getElementById('dataStatus').textContent = `🟢 キャッシュ読込 (${parsed.length}件)`;
+            return;
+          }
+        } catch(e) {}
+      }
+
+      // 1. 直接通信を試行 ➔ 2. 失敗時はCORSプロキシ経由で自動リトライ
+      const endpoints = [
+        "https://api.tarkov.dev/graphql",
+        "https://corsproxy.io/?url=https://api.tarkov.dev/graphql"
+      ];
+
+      let lastError = null;
+      for (const url of endpoints) {
+        try {
+          msg.textContent = url.includes("corsproxy") ? "プロキシ経由で再接続中..." : "APIへ接続中...";
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: MINIMAL_QUERY
+          });
+
+          if (!response.ok) throw new Error(`HTTP Status: ${response.status}`);
+          const json = await response.json();
+
+          if (json.data && json.data.tasks && json.data.tasks.length > 0) {
+            allTasks = json.data.tasks;
+            localStorage.setItem('eft_tasks_v3_cache', JSON.stringify(allTasks));
+            processTasks(allTasks);
+            modal.style.display = 'none';
+            document.getElementById('dataStatus').textContent = `🟢 オンライン取得 (${allTasks.length}件)`;
+            return;
+          } else if (json.errors) {
+            throw new Error(`API Error: ${json.errors[0].message}`);
+          }
+        } catch (err) {
+          lastError = err;
+          console.warn(`Connection failed for ${url}:`, err);
+        }
+      }
+
+      // 両方失敗した場合
+      spinner.style.display = 'none';
+      retryBtn.style.display = 'inline-block';
+      msg.innerHTML = `
+        <div style="color:var(--danger); font-weight:bold; margin-bottom:6px;">データ取得エラー</div>
+        <div style="color:var(--text-muted); font-size:0.8rem; line-height:1.4;">
+          詳細: ${lastError ? lastError.message : 'Unknown'}<br>
+          ※ブラウザの広告ブロック機能（Brave Shield等）がAPI通信を遮断している可能性があります。
+        </div>
+      `;
+    }
+
+    function processTasks(tasks) {
+      traderGrouped = {};
+      const mapsSet = new Set();
+
+      tasks.forEach(t => {
+        const traderName = (t.trader && t.trader.name) ? t.trader.name : "Other";
+        if (!traderGrouped[traderName]) traderGrouped[traderName] = [];
+        traderGrouped[traderName].push(t);
+
+        if (t.map && t.map.name) mapsSet.add(t.map.name);
+      });
+
+      const mapSelect = document.getElementById('mapFilter');
+      mapSelect.innerHTML = '<option value="">全マップ</option>';
+      Array.from(mapsSet).sort().forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        mapSelect.appendChild(opt);
+      });
+
+      if (!currentTrader || !traderGrouped[currentTrader]) {
+        currentTrader = Object.keys(traderGrouped)[0] || "Prapor";
+      }
+
+      renderTraders();
+      renderTasks();
+      renderDashboard();
+    }
+
+    function renderTraders() {
+      const traderBar = document.getElementById('traderBar');
+      traderBar.innerHTML = '';
+
+      Object.keys(traderGrouped).forEach(trader => {
+        const btn = document.createElement('button');
+        btn.className = `trader-btn ${trader === currentTrader ? 'active' : ''}`;
+        btn.textContent = trader;
+        btn.onclick = () => {
+          currentTrader = trader;
+          currentTaskId = null;
+          renderTraders();
+          renderTasks();
+          renderDashboard();
+        };
+        traderBar.appendChild(btn);
+      });
+    }
+
+    function getFilteredTasks() {
+      let list = traderGrouped[currentTrader] || [];
+      if (selectedMap) {
+        list = list.filter(t => t.map && t.map.name === selectedMap);
+      }
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        list = list.filter(t => t.name.toLowerCase().includes(q));
+      }
+      return list;
+    }
+
+    function renderTasks() {
+      const taskBar = document.getElementById('taskBar');
+      taskBar.innerHTML = '';
+      const list = getFilteredTasks();
+
+      if (list.length === 0) {
+        taskBar.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem; padding:8px;">該当なし</span>';
+        currentTaskId = null;
+        return;
+      }
+
+      if (!currentTaskId || !list.some(t => t.id === currentTaskId)) {
+        currentTaskId = list[0].id;
+      }
+
+      list.forEach(t => {
+        const isDone = completedMap[t.id] === true;
+        const btn = document.createElement('button');
+        btn.className = `task-btn ${t.id === currentTaskId ? 'active' : ''} ${isDone ? 'completed' : ''}`;
+        btn.textContent = (isDone ? '✓ ' : '') + t.name;
+        btn.onclick = () => {
+          currentTaskId = t.id;
+          renderTasks();
+          renderDashboard();
+        };
+        taskBar.appendChild(btn);
+      });
+    }
+
+    function renderDashboard() {
+      const task = allTasks.find(t => t.id === currentTaskId);
+      if (!task) return;
+
+      const isDone = completedMap[task.id] === true;
+      const toggleBtn = document.getElementById('completeToggleBtn');
+      toggleBtn.className = `btn-status ${isDone ? 'done' : ''}`;
+      toggleBtn.textContent = isDone ? '✓ 完了済み' : '未完了';
+
+      // 1. MAP
+      const mapName = task.map ? task.map.name : "Any Location";
+      const mapNorm = task.map ? task.map.normalizedName : "";
+      document.getElementById('mapLabel').textContent = mapName;
+      document.getElementById('mapImg').src = mapImages[mapNorm] || "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/customs.jpg";
+      document.getElementById('interactiveMapLink').href = mapNorm ? `https://tarkov.dev/map/${mapNorm}` : "https://tarkov.dev/maps";
+
+      // 2. 要件・鍵・アイテムのスマート抽出
+      const reqBox = document.getElementById('requirementsBox');
+      reqBox.innerHTML = '';
+
+      const objectives = task.objectives || [];
+      const itemObjectives = [];
+      const keyObjectives = [];
+
+      objectives.forEach(obj => {
+        const desc = obj.description || '';
+        if (desc.toLowerCase().includes('in raid') || desc.toLowerCase().includes('find') || desc.toLowerCase().includes('hand over')) {
+          itemObjectives.push(desc);
+        } else if (desc.toLowerCase().includes('key') || desc.toLowerCase().includes('unlock')) {
+          keyObjectives.push(desc);
+        }
+      });
+
+      if (keyObjectives.length > 0) {
+        keyObjectives.forEach(k => {
+          reqBox.innerHTML += `<div class="item-card key">🔑 <strong>鍵要件:</strong> ${k}</div>`;
+        });
+      }
+
+      if (itemObjectives.length > 0) {
+        itemObjectives.forEach(it => {
+          const isFir = it.toLowerCase().includes('in raid') || it.toLowerCase().includes('fir');
+          reqBox.innerHTML += `
+            <div class="item-card ${isFir ? 'fir' : ''}">
+              ${isFir ? '📦 <strong>[FiR必須]</strong> ' : '📦 '} ${it}
+            </div>`;
+        });
+      }
+
+      if (keyObjectives.length === 0 && itemObjectives.length === 0) {
+        reqBox.innerHTML = `<p style="color:var(--text-muted); font-size:0.85rem; padding:8px 0;">特別な鍵や持参アイテムの指定はありません。</p>`;
+      }
+
+      // 3. 手順
+      const flowBox = document.getElementById('flowBox');
+      flowBox.innerHTML = '';
+      document.getElementById('levelReq').textContent = `必要Lv: ${task.minPlayerLevel || 1}`;
+
+      objectives.forEach((obj, idx) => {
+        const li = document.createElement('li');
+        li.className = 'flow-step';
+        li.innerHTML = `
+          <span class="flow-index">${idx + 1}</span>
+          <div>
+            <div>${obj.description || '目標を達成する'}</div>
+            ${obj.optional ? '<span style="color:var(--text-muted); font-size:0.75rem;">(任意)</span>' : ''}
+          </div>
+        `;
+        flowBox.appendChild(li);
+      });
+
+      // Wikiリンク
+      document.getElementById('jpWikiLink').href = `https://www.google.com/search?q=${encodeURIComponent('site:wikiwiki.jp/eft ' + task.name)}`;
+      document.getElementById('offWikiLink').href = task.wikiLink || `https://escapefromtarkov.fandom.com/wiki/${encodeURIComponent(task.name)}`;
+    }
+
+    function toggleCurrentTaskComplete() {
+      if (!currentTaskId) return;
+      completedMap[currentTaskId] = !completedMap[currentTaskId];
+      localStorage.setItem('eft_completed_v3', JSON.stringify(completedMap));
+      renderTasks();
+      renderDashboard();
+    }
+
+    function handleSearch(val) {
+      searchQuery = val;
+      renderTasks();
+      renderDashboard();
+    }
+
+    function handleMapFilter(val) {
+      selectedMap = val;
+      renderTasks();
+      renderDashboard();
+    }
+
+    // 起動
+    fetchAPI();
+  </script>
+</body>
+</html>
