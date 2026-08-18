@@ -267,7 +267,7 @@
       border-color: var(--fir);
     }
 
-    /* ローディング / エラー表示 */
+    /* モーダル */
     .modal-overlay {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -359,29 +359,7 @@
   </div>
 
   <script>
-    // 仕様変更に強いミニマルクエリ
-    const MINIMAL_QUERY = JSON.stringify({
-      query: `{
-        tasks {
-          id
-          name
-          minPlayerLevel
-          wikiLink
-          trader {
-            name
-          }
-          map {
-            name
-            normalizedName
-          }
-          objectives {
-            id
-            description
-            optional
-          }
-        }
-      }`
-    });
+    const QUERY_STR = `{ tasks { id name minPlayerLevel wikiLink trader { name } map { name normalizedName } objectives { id description optional } } }`;
 
     const mapImages = {
       "ground-zero": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/ground-zero.jpg",
@@ -392,7 +370,9 @@
       "shoreline": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/shoreline.jpg",
       "reserve": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/reserve.jpg",
       "lighthouse": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/lighthouse.jpg",
-      "streets-of-tarkov": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/streets.jpg"
+      "streets-of-tarkov": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/streets.jpg",
+      "the-lab": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/lab.jpg",
+      "laboratory": "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/lab.jpg"
     };
 
     let allTasks = [];
@@ -401,7 +381,7 @@
     let currentTaskId = null;
     let selectedMap = "";
     let searchQuery = "";
-    let completedMap = JSON.parse(localStorage.getItem('eft_completed_v3') || '{}');
+    let completedMap = JSON.parse(localStorage.getItem('eft_completed_v4') || '{}');
 
     async function fetchAPI(force = false) {
       const modal = document.getElementById('loadingModal');
@@ -415,8 +395,8 @@
       msg.textContent = "tarkov.dev APIへ接続中...";
       msg.style.color = "var(--accent)";
 
-      // キャッシュチェック
-      const cached = localStorage.getItem('eft_tasks_v3_cache');
+      // キャッシュ読込
+      const cached = localStorage.getItem('eft_tasks_v4_cache');
       if (cached && !force) {
         try {
           const parsed = JSON.parse(cached);
@@ -429,49 +409,43 @@
         } catch(e) {}
       }
 
-      // 1. 直接通信を試行 ➔ 2. 失敗時はCORSプロキシ経由で自動リトライ
-      const endpoints = [
-        "https://api.tarkov.dev/graphql",
-        "https://corsproxy.io/?url=https://api.tarkov.dev/graphql"
+      // CORSプリフライトを回避するGETリクエストURL
+      const encodedQuery = encodeURIComponent(QUERY_STR);
+      const sources = [
+        `https://api.tarkov.dev/graphql?query=${encodedQuery}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.tarkov.dev/graphql?query=${encodedQuery}`)}`
       ];
 
       let lastError = null;
-      for (const url of endpoints) {
+      for (const url of sources) {
         try {
-          msg.textContent = url.includes("corsproxy") ? "プロキシ経由で再接続中..." : "APIへ接続中...";
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: MINIMAL_QUERY
-          });
-
-          if (!response.ok) throw new Error(`HTTP Status: ${response.status}`);
-          const json = await response.json();
+          msg.textContent = url.includes("allorigins") ? "予備サーバー経由で通信中..." : "APIへ接続中 (GET通信)...";
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
 
           if (json.data && json.data.tasks && json.data.tasks.length > 0) {
             allTasks = json.data.tasks;
-            localStorage.setItem('eft_tasks_v3_cache', JSON.stringify(allTasks));
+            localStorage.setItem('eft_tasks_v4_cache', JSON.stringify(allTasks));
             processTasks(allTasks);
             modal.style.display = 'none';
-            document.getElementById('dataStatus').textContent = `🟢 オンライン取得 (${allTasks.length}件)`;
+            document.getElementById('dataStatus').textContent = `🟢 オンライン同期 (${allTasks.length}件)`;
             return;
-          } else if (json.errors) {
-            throw new Error(`API Error: ${json.errors[0].message}`);
           }
-        } catch (err) {
-          lastError = err;
-          console.warn(`Connection failed for ${url}:`, err);
+        } catch (e) {
+          lastError = e;
+          console.warn("Fetch failed:", url, e);
         }
       }
 
-      // 両方失敗した場合
+      // 失敗時
       spinner.style.display = 'none';
       retryBtn.style.display = 'inline-block';
       msg.innerHTML = `
-        <div style="color:var(--danger); font-weight:bold; margin-bottom:6px;">データ取得エラー</div>
+        <div style="color:var(--danger); font-weight:bold; margin-bottom:6px;">通信に失敗しました</div>
         <div style="color:var(--text-muted); font-size:0.8rem; line-height:1.4;">
-          詳細: ${lastError ? lastError.message : 'Unknown'}<br>
-          ※ブラウザの広告ブロック機能（Brave Shield等）がAPI通信を遮断している可能性があります。
+          エラー: ${lastError ? lastError.message : '接続不可'}<br>
+          ※ブラウザの拡張機能（広告ブロック等）が通信を遮断していないか確認してください。
         </div>
       `;
     }
@@ -582,7 +556,7 @@
       document.getElementById('mapImg').src = mapImages[mapNorm] || "https://raw.githubusercontent.com/the-hideout/tarkov-dev/main/public/maps/customs.jpg";
       document.getElementById('interactiveMapLink').href = mapNorm ? `https://tarkov.dev/map/${mapNorm}` : "https://tarkov.dev/maps";
 
-      // 2. 要件・鍵・アイテムのスマート抽出
+      // 2. 鍵・アイテム要約
       const reqBox = document.getElementById('requirementsBox');
       reqBox.innerHTML = '';
 
@@ -592,16 +566,17 @@
 
       objectives.forEach(obj => {
         const desc = obj.description || '';
-        if (desc.toLowerCase().includes('in raid') || desc.toLowerCase().includes('find') || desc.toLowerCase().includes('hand over')) {
+        const lower = desc.toLowerCase();
+        if (lower.includes('in raid') || lower.includes('find') || lower.includes('hand over') || lower.includes('locate')) {
           itemObjectives.push(desc);
-        } else if (desc.toLowerCase().includes('key') || desc.toLowerCase().includes('unlock')) {
+        } else if (lower.includes('key') || lower.includes('unlock') || lower.includes('dorm')) {
           keyObjectives.push(desc);
         }
       });
 
       if (keyObjectives.length > 0) {
         keyObjectives.forEach(k => {
-          reqBox.innerHTML += `<div class="item-card key">🔑 <strong>鍵要件:</strong> ${k}</div>`;
+          reqBox.innerHTML += `<div class="item-card key">🔑 <strong>鍵・場所要件:</strong> ${k}</div>`;
         });
       }
 
@@ -645,7 +620,7 @@
     function toggleCurrentTaskComplete() {
       if (!currentTaskId) return;
       completedMap[currentTaskId] = !completedMap[currentTaskId];
-      localStorage.setItem('eft_completed_v3', JSON.stringify(completedMap));
+      localStorage.setItem('eft_completed_v4', JSON.stringify(completedMap));
       renderTasks();
       renderDashboard();
     }
